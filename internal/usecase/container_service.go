@@ -5,12 +5,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ljubushkin/container-management-service/internal/apperror"
 	"github.com/ljubushkin/container-management-service/internal/domain"
 	"github.com/ljubushkin/container-management-service/internal/repository"
 )
-
-var ErrInvalidStatus = errors.New("invalid status")
-var ErrInvalidType = errors.New("type is required")
 
 type Service struct {
 	repo          repository.Repository
@@ -30,17 +28,22 @@ func NewService(
 	}
 }
 
-var now = time.Now()
-
 func (s *Service) CreateContainer(typeCode string) (*domain.Container, error) {
 	if typeCode == "" {
-		return nil, errors.New("type is required")
+		return nil, apperror.New(
+			apperror.CodeInvalidType,
+			"type is required",
+			nil,
+		)
 	}
 
-	// 🔥 проверка справочника
 	_, err := s.typeRepo.GetByCode(typeCode)
 	if err != nil {
-		return nil, ErrInvalidType
+		return nil, apperror.New(
+			apperror.CodeInvalidType,
+			"invalid type",
+			err,
+		)
 	}
 
 	c := &domain.Container{
@@ -51,7 +54,11 @@ func (s *Service) CreateContainer(typeCode string) (*domain.Container, error) {
 	}
 
 	if err := s.repo.Create(c); err != nil {
-		return nil, err
+		return nil, apperror.New(
+			apperror.CodeInternal,
+			"failed to create container",
+			err,
+		)
 	}
 
 	return c, nil
@@ -59,14 +66,23 @@ func (s *Service) CreateContainer(typeCode string) (*domain.Container, error) {
 
 func (s *Service) CreateBatch(typeCode string, count int) ([]*domain.Container, error) {
 	if count <= 0 {
-		return nil, errors.New("count must be greater than 0")
+		return nil, apperror.New(
+			apperror.CodeInvalidType,
+			"count must be greater than 0",
+			nil,
+		)
 	}
 
 	_, err := s.typeRepo.GetByCode(typeCode)
 	if err != nil {
-		return nil, errors.New("invalid container type")
+		return nil, apperror.New(
+			apperror.CodeInvalidType,
+			"invalid type",
+			err,
+		)
 	}
 
+	now := time.Now()
 	result := make([]*domain.Container, 0, count)
 
 	for range count {
@@ -74,47 +90,144 @@ func (s *Service) CreateBatch(typeCode string, count int) ([]*domain.Container, 
 			ID:        uuid.New().String(),
 			TypeCode:  typeCode,
 			Status:    domain.StatusValid,
-			CreatedAt: time.Now(),
+			CreatedAt: now,
 		})
 	}
 
 	if err := s.repo.CreateBatch(result); err != nil {
-		return nil, err
+		return nil, apperror.New(
+			apperror.CodeInternal,
+			"failed to create batch",
+			err,
+		)
 	}
 
 	return result, nil
 }
 
 func (s *Service) GetByID(id string) (*domain.Container, error) {
-	return s.repo.GetByID(id)
+	container, err := s.repo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, apperror.New(
+				apperror.CodeNotFound,
+				"container not found",
+				err,
+			)
+		}
+
+		return nil, apperror.New(
+			apperror.CodeInternal,
+			"failed to get container",
+			err,
+		)
+	}
+
+	return container, nil
 }
 
 func (s *Service) UpdateStatus(id string, status domain.Status) error {
 	if !domain.IsValidStatus(status) {
-		return ErrInvalidStatus
+		return apperror.New(
+			apperror.CodeInvalidStatus,
+			"invalid status",
+			nil,
+		)
 	}
 
 	c, err := s.repo.GetByID(id)
 	if err != nil {
-		return err
+		if errors.Is(err, repository.ErrNotFound) {
+			return apperror.New(
+				apperror.CodeNotFound,
+				"container not found",
+				err,
+			)
+		}
+
+		return apperror.New(
+			apperror.CodeInternal,
+			"failed to get container",
+			err,
+		)
 	}
 
 	c.Status = status
-	return s.repo.Update(c)
+
+	if err := s.repo.Update(c); err != nil {
+		return apperror.New(
+			apperror.CodeInternal,
+			"failed to update container",
+			err,
+		)
+	}
+
+	return nil
 }
 
 func (s *Service) AssignWarehouse(id string, wid string) error {
 	_, err := s.warehouseRepo.GetByID(wid)
 	if err != nil {
-		return errors.New("invalid warehouse")
+		return apperror.New(
+			apperror.CodeInvalidWarehouse,
+			"invalid warehouse",
+			err,
+		)
 	}
 
 	c, err := s.repo.GetByID(id)
 	if err != nil {
-		return err
+		if errors.Is(err, repository.ErrNotFound) {
+			return apperror.New(
+				apperror.CodeNotFound,
+				"container not found",
+				err,
+			)
+		}
+
+		return apperror.New(
+			apperror.CodeInternal,
+			"failed to get container",
+			err,
+		)
 	}
 
-	widCopy := wid
-	c.WarehouseID = &widCopy
-	return s.repo.Update(c)
+	c.WarehouseID = &wid
+
+	if err := s.repo.Update(c); err != nil {
+		return apperror.New(
+			apperror.CodeInternal,
+			"failed to update container",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func (s *Service) List(filter domain.ContainerFilter) ([]*domain.Container, error) {
+	// базовая валидация pagination
+	if filter.Limit < 0 || filter.Offset < 0 {
+		return nil, apperror.New(
+			apperror.CodeInvalidPagination,
+			"invalid pagination params",
+			nil,
+		)
+	}
+
+	// можно задать дефолты (production-паттерн)
+	if filter.Limit == 0 {
+		filter.Limit = 50
+	}
+
+	containers, err := s.repo.List(filter)
+	if err != nil {
+		return nil, apperror.New(
+			apperror.CodeInternal,
+			"failed to list containers",
+			err,
+		)
+	}
+
+	return containers, nil
 }

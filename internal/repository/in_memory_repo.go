@@ -2,16 +2,21 @@ package repository
 
 import (
 	"errors"
+	"sort"
 	"sync"
 
 	"github.com/ljubushkin/container-management-service/internal/domain"
 )
 
+var ErrNotFound = errors.New("not found")
+
+// ===== Interfaces =====
+
 type Repository interface {
 	Create(c *domain.Container) error
 	CreateBatch(containers []*domain.Container) error
 	GetByID(id string) (*domain.Container, error)
-	List(filter ListFilter) ([]*domain.Container, error)
+	List(filter domain.ContainerFilter) ([]*domain.Container, error)
 	Update(c *domain.Container) error
 }
 
@@ -25,15 +30,7 @@ type WarehouseRepository interface {
 	List() ([]*domain.Warehouse, error)
 }
 
-type ListFilter struct {
-	Type        *string
-	WarehouseID *string
-	Status      *domain.Status
-	Limit       *int
-	Offset      *int
-}
-
-var ErrNotFound = errors.New("container not found")
+// ===== InMemory Container Repo =====
 
 type InMemoryRepo struct {
 	mu   sync.RWMutex
@@ -45,6 +42,93 @@ func NewInMemoryRepo() *InMemoryRepo {
 		data: make(map[string]*domain.Container),
 	}
 }
+
+func (r *InMemoryRepo) Create(c *domain.Container) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.data[c.ID] = cloneContainer(c)
+	return nil
+}
+
+func (r *InMemoryRepo) CreateBatch(containers []*domain.Container) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, c := range containers {
+		r.data[c.ID] = cloneContainer(c)
+	}
+	return nil
+}
+
+func (r *InMemoryRepo) GetByID(id string) (*domain.Container, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	c, ok := r.data[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	return cloneContainer(c), nil
+}
+
+func (r *InMemoryRepo) List(filter domain.ContainerFilter) ([]*domain.Container, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]*domain.Container, 0)
+
+	for _, c := range r.data {
+		if filter.TypeCode != nil && c.TypeCode != *filter.TypeCode {
+			continue
+		}
+
+		if filter.Status != nil && c.Status != *filter.Status {
+			continue
+		}
+
+		if filter.WarehouseID != nil {
+			if c.WarehouseID == nil || *c.WarehouseID != *filter.WarehouseID {
+				continue
+			}
+		}
+
+		result = append(result, cloneContainer(c))
+	}
+
+	// стабильный порядок (важно для pagination)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.Before(result[j].CreatedAt)
+	})
+
+	// pagination
+	start := filter.Offset
+	if start > len(result) {
+		return []*domain.Container{}, nil
+	}
+
+	end := start + filter.Limit
+	if end > len(result) {
+		end = len(result)
+	}
+
+	return result[start:end], nil
+}
+
+func (r *InMemoryRepo) Update(c *domain.Container) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.data[c.ID]; !ok {
+		return ErrNotFound
+	}
+
+	r.data[c.ID] = cloneContainer(c)
+	return nil
+}
+
+// ===== InMemory Type Repo =====
 
 type InMemoryTypeRepo struct {
 	data map[string]*domain.ContainerType
@@ -75,6 +159,8 @@ func (r *InMemoryTypeRepo) List() ([]*domain.ContainerType, error) {
 	return result, nil
 }
 
+// ===== InMemory Warehouse Repo =====
+
 type InMemoryWarehouseRepo struct {
 	data map[string]*domain.Warehouse
 }
@@ -104,86 +190,19 @@ func (r *InMemoryWarehouseRepo) List() ([]*domain.Warehouse, error) {
 	return result, nil
 }
 
-func copyContainer(c *domain.Container) *domain.Container {
+// ===== Helpers =====
+
+func cloneContainer(c *domain.Container) *domain.Container {
 	if c == nil {
 		return nil
 	}
 
-	copy := *c
+	clone := *c
 
 	if c.WarehouseID != nil {
 		wid := *c.WarehouseID
-		copy.WarehouseID = &wid
+		clone.WarehouseID = &wid
 	}
 
-	return &copy
-}
-
-func (r *InMemoryRepo) Create(c *domain.Container) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.data[c.ID] = copyContainer(c)
-	return nil
-}
-
-func (r *InMemoryRepo) CreateBatch(containers []*domain.Container) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for _, c := range containers {
-		r.data[c.ID] = copyContainer(c)
-	}
-	return nil
-}
-
-func (r *InMemoryRepo) GetByID(id string) (*domain.Container, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	c, ok := r.data[id]
-	if !ok {
-		return nil, ErrNotFound
-	}
-
-	return copyContainer(c), nil
-}
-
-func (r *InMemoryRepo) List(filter ListFilter) ([]*domain.Container, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]*domain.Container, 0)
-
-	for _, c := range r.data {
-		if filter.Type != nil && c.TypeCode != *filter.Type {
-			continue
-		}
-
-		if filter.Status != nil && c.Status != *filter.Status {
-			continue
-		}
-
-		if filter.WarehouseID != nil {
-			if c.WarehouseID == nil || *c.WarehouseID != *filter.WarehouseID {
-				continue
-			}
-		}
-
-		result = append(result, copyContainer(c))
-	}
-
-	return result, nil
-}
-
-func (r *InMemoryRepo) Update(c *domain.Container) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if _, ok := r.data[c.ID]; !ok {
-		return ErrNotFound
-	}
-
-	r.data[c.ID] = copyContainer(c)
-	return nil
+	return &clone
 }

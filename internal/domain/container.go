@@ -28,6 +28,15 @@ type Warehouse struct {
 	Name string
 }
 
+type ContainerFilter struct {
+	TypeCode    *string
+	WarehouseID *string
+	Status      *Status
+
+	Limit  int
+	Offset int
+}
+
 func IsValidStatus(s Status) bool {
 	switch s {
 	case StatusValid, StatusDefect, StatusWritten:
