@@ -30,6 +30,15 @@ func (h *Handler) CreateContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := validateRequest(req); err != nil {
+		writeError(w, apperror.New(
+			apperror.CodeInvalidType,
+			"validation failed",
+			err,
+		))
+		return
+	}
+
 	c, err := h.service.CreateContainer(req.Type)
 	if err != nil {
 		writeError(w, err)
@@ -48,6 +57,15 @@ func (h *Handler) CreateContainerBatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, apperror.New(
 			apperror.CodeInvalidType,
 			"invalid request",
+			err,
+		))
+		return
+	}
+
+	if err := validateRequest(req); err != nil {
+		writeError(w, apperror.New(
+			apperror.CodeInvalidType,
+			"validation failed",
 			err,
 		))
 		return
@@ -87,6 +105,15 @@ func (h *Handler) AssignWarehouse(w http.ResponseWriter, r *http.Request) {
 		writeError(w, apperror.New(
 			apperror.CodeInvalidWarehouse,
 			"invalid request",
+			err,
+		))
+		return
+	}
+
+	if err := validateRequest(req); err != nil {
+		writeError(w, apperror.New(
+			apperror.CodeInvalidType,
+			"validation failed",
 			err,
 		))
 		return
@@ -178,4 +205,34 @@ func (h *Handler) ListContainers(w http.ResponseWriter, r *http.Request) {
 			Count:  len(resp),
 		},
 	})
+}
+
+func (h *Handler) ListWarehouses(w http.ResponseWriter, r *http.Request) {
+	warehouses, err := h.service.ListWarehouses()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	resp := make([]WarehouseResponse, 0, len(warehouses))
+	for _, wh := range warehouses {
+		resp = append(resp, toWarehouseResponse(wh))
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) ListContainerTypes(w http.ResponseWriter, r *http.Request) {
+	types, err := h.service.ListContainerTypes()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	resp := make([]ContainerTypeResponse, 0, len(types))
+	for _, t := range types {
+		resp = append(resp, toContainerTypeResponse(t))
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }

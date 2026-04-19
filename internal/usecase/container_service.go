@@ -73,6 +73,14 @@ func (s *Service) CreateBatch(typeCode string, count int) ([]*domain.Container, 
 		)
 	}
 
+	if typeCode == "" {
+		return nil, apperror.New(
+			apperror.CodeInvalidType,
+			"type is required",
+			nil,
+		)
+	}
+
 	_, err := s.typeRepo.GetByCode(typeCode)
 	if err != nil {
 		return nil, apperror.New(
@@ -230,4 +238,28 @@ func (s *Service) List(filter domain.ContainerFilter) ([]*domain.Container, erro
 	}
 
 	return containers, nil
+}
+
+func (s *Service) ListWarehouses() ([]*domain.Warehouse, error) {
+	warehouses, err := s.warehouseRepo.List()
+	if err != nil {
+		return nil, apperror.New(
+			apperror.CodeInternal,
+			"failed to list warehouses",
+			err,
+		)
+	}
+	return warehouses, nil
+}
+
+func (s *Service) ListContainerTypes() ([]*domain.ContainerType, error) {
+	containerTypes, err := s.typeRepo.List()
+	if err != nil {
+		return nil, apperror.New(
+			apperror.CodeInternal,
+			"failed to list containerTypes",
+			err,
+		)
+	}
+	return containerTypes, nil
 }

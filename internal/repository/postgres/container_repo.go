@@ -169,7 +169,7 @@ func (r *ContainerRepo) List(filter domain.ContainerFilter) ([]*domain.Container
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
 
-	query += fmt.Sprintf(" ORDER BY created_at ASC LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	query += fmt.Sprintf(" ORDER BY created_at ASC, id ASC LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, filter.Limit, filter.Offset)
 
 	rows, err := r.db.Query(query, args...)

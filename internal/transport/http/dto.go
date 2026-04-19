@@ -11,7 +11,7 @@ import (
 )
 
 type CreateContainerRequest struct {
-	Type string `json:"type"`
+	Type string `json:"type" validate:"required"`
 }
 
 type ContainerResponse struct {
@@ -23,7 +23,7 @@ type ContainerResponse struct {
 }
 
 type AssignWarehouseRequest struct {
-	WarehouseID string `json:"warehouse_id"`
+	WarehouseID string `json:"warehouse_id" validate:"required"`
 }
 
 func toResponse(c *domain.Container) ContainerResponse {
@@ -87,8 +87,8 @@ func mapStatus(code apperror.Code) int {
 }
 
 type CreateBatchRequest struct {
-	Type  string `json:"type"`
-	Count int    `json:"count"`
+	Type  string `json:"type" validate:"required"`
+	Count int    `json:"count" validate:"required,gt=0,lte=1000"`
 }
 
 type ListContainersResponse struct {
@@ -100,4 +100,28 @@ type Meta struct {
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
 	Count  int `json:"count"`
+}
+
+type WarehouseResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type ContainerTypeResponse struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+func toWarehouseResponse(w *domain.Warehouse) WarehouseResponse {
+	return WarehouseResponse{
+		ID:   w.ID,
+		Name: w.Name,
+	}
+}
+
+func toContainerTypeResponse(t *domain.ContainerType) ContainerTypeResponse {
+	return ContainerTypeResponse{
+		Code: t.Code,
+		Name: t.Name,
+	}
 }

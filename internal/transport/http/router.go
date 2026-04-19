@@ -2,7 +2,7 @@ package httptransport
 
 import "net/http"
 
-func NewRouter(h *Handler) *http.ServeMux {
+func NewRouter(h *Handler) http.Handler {
 	mux := http.NewServeMux()
 
 	// /containers → list + create
@@ -44,5 +44,23 @@ func NewRouter(h *Handler) *http.ServeMux {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
-	return mux
+	// list wharehouse
+	mux.HandleFunc("/warehouses", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			h.ListWarehouses(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+
+	// list container types
+	mux.HandleFunc("/types", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			h.ListContainerTypes(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+
+	return LoggingMiddlware(mux)
 }
