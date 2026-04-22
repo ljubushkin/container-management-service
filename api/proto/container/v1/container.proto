@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package container.v1;
+
+option go_package = "github.com/ljubushkin/container-management-service/pkg/api/container/v1;containerv1";
+
+message GetContainerRequest {
+  string id = 1;
+}
+
+message Container {
+  string id = 1;
+  string type = 2;
+  string status = 3;
+  string warehouse_id = 4;
+  string created_at = 5;
+}
+
+message GetContainerResponse {
+  Container container = 1;
+}
+
+message CreateContainerRequest {
+  string type = 1;
+}
+
+message CreateContainerResponse {
+  Container container = 1;
+}
+
+message ListContainersRequest {
+  string type = 1;
+  string warehouse_id = 2;
+  string status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListContainersResponse {
+  repeated Container containers = 1;
+}
+
+message CreateContainerBatchRequest {
+  string type = 1;
+  int32 count = 2;
+}
+
+message CreateContainerBatchResponse {
+  repeated Container containers = 1;
+}
+
+message AssignWarehouseRequest {
+  string id = 1;
+  string warehouse_id = 2;
+}
+
+message AssignWarehouseResponse {}
+
+message Warehouse {
+  string warehouse_id = 1; 
+  string name = 2;
+}
+
+message ListWarehousesRequest {}
+
+message ListWarehousesResponse {
+  repeated Warehouse warehouses = 1;
+}
+
+message ContainerType {
+  string code = 1; 
+  string name = 2;
+}
+
+message ListContainerTypesRequest {}
+
+message ListContainerTypesResponse {
+  repeated ContainerType container_types = 1;
+}
+
+message UpdateStatusRequest {
+  string id = 1;
+  string status = 2;
+}
+
+message UpdateStatusResponse {}
+
+service ContainerService {
+  rpc GetContainer(GetContainerRequest) returns (GetContainerResponse);
+  rpc CreateContainer(CreateContainerRequest) returns (CreateContainerResponse);
+  rpc ListContainers(ListContainersRequest) returns (ListContainersResponse);
+  rpc CreateContainerBatch(CreateContainerBatchRequest) returns (CreateContainerBatchResponse);
+  rpc AssignWarehouse(AssignWarehouseRequest) returns (AssignWarehouseResponse);
+  rpc ListWarehouses(ListWarehousesRequest) returns (ListWarehousesResponse);
+  rpc ListContainerTypes(ListContainerTypesRequest) returns (ListContainerTypesResponse);
+  rpc UpdateStatus(UpdateStatusRequest) returns (UpdateStatusResponse);
+}
+

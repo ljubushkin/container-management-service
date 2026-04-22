@@ -5,6 +5,15 @@ import "net/http"
 func NewRouter(h *Handler) http.Handler {
 	mux := http.NewServeMux()
 
+	// health
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			h.Health(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+
 	// /containers → list + create
 	mux.HandleFunc("/containers", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -26,7 +35,7 @@ func NewRouter(h *Handler) http.Handler {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
-	// get by id (оставляем через query, пока без chi/gorilla)
+	// get by id
 	mux.HandleFunc("/containers/get", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			h.GetByID(w, r)

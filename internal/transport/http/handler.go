@@ -18,6 +18,12 @@ func NewHandler(s *usecase.Service) *Handler {
 	return &Handler{service: s}
 }
 
+func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, HealthResponse{
+		Status: "ok",
+	})
+}
+
 func (h *Handler) CreateContainer(w http.ResponseWriter, r *http.Request) {
 	var req CreateContainerRequest
 

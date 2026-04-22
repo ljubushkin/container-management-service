@@ -10,6 +10,10 @@ import (
 	"github.com/ljubushkin/container-management-service/internal/domain"
 )
 
+type HealthResponse struct {
+	Status string `json:"status"`
+}
+
 type CreateContainerRequest struct {
 	Type string `json:"type" validate:"required"`
 }
