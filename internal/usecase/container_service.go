@@ -263,3 +263,38 @@ func (s *Service) ListContainerTypes() ([]*domain.ContainerType, error) {
 	}
 	return containerTypes, nil
 }
+
+func (s *Service) UnassignWarehouse(id string) error {
+	c, err := s.repo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return apperror.New(
+				apperror.CodeNotFound,
+				"container not found",
+				err,
+			)
+		}
+
+		return apperror.New(
+			apperror.CodeInternal,
+			"failed to get container",
+			err,
+		)
+	}
+
+	if c.WarehouseID == nil {
+		return nil
+	}
+
+	c.WarehouseID = nil
+
+	if err := s.repo.Update(c); err != nil {
+		return apperror.New(
+			apperror.CodeInternal,
+			"failed to update container",
+			err,
+		)
+	}
+
+	return nil
+}
