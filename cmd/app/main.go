@@ -7,18 +7,22 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/ljubushkin/container-management-service/internal/config"
+	"github.com/ljubushkin/container-management-service/internal/logger"
 	"github.com/ljubushkin/container-management-service/internal/repository"
 	"github.com/ljubushkin/container-management-service/internal/repository/inmemory"
 	"github.com/ljubushkin/container-management-service/internal/repository/postgres"
 	grpctransport "github.com/ljubushkin/container-management-service/internal/transport/grpc"
 	httptransport "github.com/ljubushkin/container-management-service/internal/transport/http"
+	kafkatransport "github.com/ljubushkin/container-management-service/internal/transport/kafka"
 	"github.com/ljubushkin/container-management-service/internal/usecase"
 	containerv1 "github.com/ljubushkin/container-management-service/pkg/api/container/v1"
 	"google.golang.org/grpc"
@@ -69,6 +73,8 @@ func buildRepositories(cfg config.Config) (
 }
 
 func main() {
+	logg := logger.New()
+
 	cfg := config.Load()
 
 	containerRepo, typeRepo, warehouseRepo, db := buildRepositories(cfg)
@@ -85,9 +91,33 @@ func main() {
 	grpcServer := grpc.NewServer()
 	containerv1.RegisterContainerServiceServer(grpcServer, grpcHandler)
 
+	kafkaHandler := kafkatransport.NewHandler(service)
+
+	kafkaConsumer, err := kafkatransport.NewConsumer(
+		cfg.KafkaBrokers,
+		cfg.KafkaMovementsTopic,
+		cfg.KafkaGroupID,
+		kafkaHandler,
+	)
+	if err != nil {
+		logg.Error(
+			"failed create kafka consumer",
+			"error", err,
+		)
+
+		os.Exit(1)
+	}
+
+	var wg sync.WaitGroup
+
 	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
 	if err != nil {
-		log.Fatalf("grpc listen: %v", err)
+		logg.Error(
+			"failed grpc listen",
+			"error", err,
+		)
+
+		os.Exit(1)
 	}
 
 	server := &http.Server{
@@ -99,35 +129,63 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Printf("server started on :%s", cfg.HTTPPort)
+		logg.Info(
+			"server started",
+			"port", cfg.HTTPPort,
+		)
 
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen and serve: %v", err)
+			logg.Error(
+				"failed starting server",
+				"error", err,
+			)
 		}
 	}()
 
 	go func() {
-		log.Printf("grpc server started on :%s", cfg.GRPCPort)
+		logg.Info(
+			"grpc server started",
+			"port", cfg.GRPCPort,
+		)
 
 		if err := grpcServer.Serve(grpcLis); err != nil {
-			log.Printf("grpc server stopped: %v", err)
+			logg.Error(
+				"grpc server serve failed",
+				"error", err,
+			)
 		}
 	}()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		kafkaConsumer.Start(ctx)
+	}()
+
 	<-ctx.Done()
-	log.Println("shutdown signal received")
+	logg.Info("shutdown signal received")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		logg.Error(
+			"graceful shutdown failed",
+			"error", err,
+		)
 		if err := server.Close(); err != nil {
-			log.Printf("force close failed: %v", err)
+			logg.Error(
+				"force close failed",
+				"error", err,
+			)
 		}
 	}
 
 	grpcServer.GracefulStop()
 
-	log.Println("server stopped")
+	logg.Info("grpc server stopped")
+
+	wg.Wait()
+
+	logg.Info("server stopped")
 }
